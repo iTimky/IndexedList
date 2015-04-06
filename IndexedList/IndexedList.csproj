@@ -41,7 +41,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="FiledNameSearcher.cs" />
+    <Compile Include="ExpressionParser.cs" />
+    <Compile Include="HashIndex.cs" />
     <Compile Include="IndexedList.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

@@ -1,72 +1,148 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace IndexedList
 {
     class Program
     {
+        private static List<ManyToMany> list;
+        private static IndexedList<ManyToMany> indexedList;
+        private static List<ManyToMany> manyToManys;
+        private static List<ManyToMany> resultsFromlist = new List<ManyToMany>();
+        private static List<ManyToMany> resultsFromindexed = new List<ManyToMany>();
+
+
+        private static int Count = 1000000;
+
         static void Main(string[] args)
         {
-            var newO = new Object() { Id = 1, Name = "SomeName" };
-            Expression<Func<Object, bool>> expr1 = o => newO.Id.Equals(o.Id);
-            Expression<Func<Object, bool>> expr2 = o => o.Id.Equals(newO.Id);
-            Expression<Func<Object, bool>> expr3 = o => ReferenceEquals(o.Id, newO.Id);
-            Expression<Func<Object, bool>> expr4 = o => A(o.Id, newO.Id);
+            Init();
 
-            Expression<Func<Object, bool>> expr5 = o => o.Id == newO.Id;
-            Expression<Func<Object, bool>> expr6 = o => o.Id <= newO.Id;
-            Expression<Func<Object, bool>> expr7 = o => o.Id < newO.Id;
-            Expression<Func<Object, bool>> expr8 = o => o.Id > newO.Id;
-            Expression<Func<Object, bool>> expr9 = o => o.Id >= newO.Id;
-
-            var fieldName1 = FieldNameSearcher.GetFieldName(expr1);
-            var fieldName2 = FieldNameSearcher.GetFieldName(expr2);
-            var fieldName3 = FieldNameSearcher.GetFieldName(expr3);
-            var fieldName4 = FieldNameSearcher.GetFieldName(expr4);
-
-            var fieldName5 = FieldNameSearcher.GetFieldName(expr5);
-            var fieldName6 = FieldNameSearcher.GetFieldName(expr6);
-            var fieldName7 = FieldNameSearcher.GetFieldName(expr7);
-            var fieldName8 = FieldNameSearcher.GetFieldName(expr8);
-            var fieldName9 = FieldNameSearcher.GetFieldName(expr9);
-
-
-            var fieldName10 = FieldNameSearcher.GetFieldName((Object o) => string.Empty == o.Name);
-
-
-            Console.WriteLine(fieldName1);
-            Console.WriteLine(fieldName2);
-            Console.WriteLine(fieldName3);
-            Console.WriteLine(fieldName4);
-
-            Console.WriteLine(fieldName5);
-            Console.WriteLine(fieldName6);
-            Console.WriteLine(fieldName7);
-            Console.WriteLine(fieldName8);
-            Console.WriteLine(fieldName9);
-            Console.WriteLine(fieldName10);
-
+            for (int i = 1; i <= Count; i *= 10)
+                Test(i);
+            
+            Console.WriteLine("Done");
             Console.ReadKey();
         }
 
-        static bool A(int a, int b)
+        static void Test(int count)
         {
-            return true;
+            var stopwatch = new Stopwatch();
+
+            stopwatch.Start();
+                list = new List<ManyToMany>();
+                list.AddRange(manyToManys.Take(count));
+            stopwatch.Stop();
+            Console.WriteLine("List init {0}: {1} ms", count, stopwatch.ElapsedMilliseconds);
+
+
+            stopwatch.Reset();
+
+            stopwatch.Start();
+                indexedList = new IndexedList<ManyToMany>();
+                indexedList.AddRange(manyToManys.Take(count));
+                indexedList.AddIndex(mtm => mtm.FirstId);
+            stopwatch.Stop();
+            Console.WriteLine("IndexedList init {0}: {1} ms", count, stopwatch.ElapsedMilliseconds);
+
+
+//            stopwatch.Reset();
+//
+//            stopwatch.Start();
+//                indexedList.AddRange(manyToManys.Take(1000000));
+//            stopwatch.Stop();
+//            Console.WriteLine("IndexedList  add 1000000: {0} ms", stopwatch.ElapsedMilliseconds);
+
+            
+            stopwatch.Reset();
+
+
+            stopwatch.Start();
+            //foreach (var manyToMany in list)
+            //    resultsFromlist.AddRange(list.Where(l => l.FirstId == manyToMany.FirstId).ToList());
+                list.Where(l => l.FirstId == 1000).ToList();
+            stopwatch.Stop();
+            Console.WriteLine("List {0}: {1} ms", count, stopwatch.ElapsedMilliseconds);
+
+            stopwatch.Reset();
+
+            stopwatch.Start();
+//            foreach (var manyToMany in indexedList)
+//                resultsFromlist.AddRange(indexedList.Where(l => l.FirstId == manyToMany.FirstId).ToList());
+                indexedList.Where(l => l.FirstId == 1000).ToList();
+            stopwatch.Stop();
+            Console.WriteLine("IndexedList {0}: {1} ms", count, stopwatch.ElapsedMilliseconds);
+            Console.WriteLine();
+
+            list.Clear();
+            indexedList.Clear();
         }
 
-        class Object
-        {
-            public int Id { get; set; }
-            public string Name { get; set; }
 
-            public override string ToString()
+        static void Init()
+        {
+            list = new List<ManyToMany>(Count);
+            indexedList = new IndexedList<ManyToMany>();
+            //indexedList.AddIndex(mtm => mtm.FirstId);
+
+            manyToManys = new List<ManyToMany>();
+            for (int i = 0; i < Count; i++)
+                manyToManys.Add(new ManyToMany(i, Count - i));
+        }
+
+
+        class ManyToMany
+        {
+            public ManyToMany(int firstId, int secondId)
             {
-                return string.Format("Id: {0}, Name: {1}", Id, Name);
+                FirstId = firstId;
+                SecondId = secondId;
             }
+
+            public int FirstId { get; set; }
+            public int SecondId { get; set; }
         }
+
+        class First
+        {
+            public First(int id)
+            {
+                Id = id;
+            }
+
+            public int Id { get; set; }
+            //public List<Second> Seconds = new List<Second>();
+        }
+//
+//        class Second
+//        {
+//            public Second(int id)
+//            {
+//                Id = id;
+//            }
+//
+//            public int Id { get; set; } 
+//            public List<First> Firsts = new List<First>(); 
+//        }
+
+//        class Object
+//        {
+//            public int Id { get; set; }
+//            public int ParentId { get; set; }
+//            public string Name { get; set; }
+//            public Object obj { get; set; }
+//
+//            public override string ToString()
+//            {
+//                return string.Format("Id: {0}, Name: {1}", Id, Name);
+//            }
+//        }
     }
 }
