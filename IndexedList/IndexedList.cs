@@ -14,6 +14,11 @@ namespace IndexedList
 
         public IndexedList() { }
 
+        public IndexedList(IEnumerable<TItem> items)
+        {
+            Items.AddRange(items);
+        }
+
         public IndexedList(params string[] names)
         {
             foreach (string name in names)
@@ -113,6 +118,13 @@ namespace IndexedList
             Items.RemoveAll(match);
             foreach (var index in Indexes.Values)
                 index.Remove(toDelete);
+        }
+
+
+        public void Remove(IEnumerable<TItem> items)
+        {
+            foreach (var item in items)
+                Remove(item);
         }
 
 
