@@ -36,7 +36,7 @@ namespace IndexedList
             return Searchers[expression.Body.NodeType].FindFieldName(expression);
         }
 
-        public static int? GetFieldHash<TItem>(Expression<Func<TItem, bool>> expression)
+        public static int? GetMemberHash<TItem>(Expression<Func<TItem, bool>> expression)
         {
             if (expression == null || !Searchers.ContainsKey(expression.Body.NodeType))
                 return null;
@@ -95,14 +95,33 @@ namespace IndexedList
                     return value.GetHashCode();
             }
 
+            var leftNew = binaryExpression.Left as NewExpression;
+            if (leftNew != null)
+            {
+                object value = CreateInstance(leftNew);
+                if (value != null)
+                    return value.GetHashCode();
+            }
+
+            var rightNew = binaryExpression.Right as NewExpression;
+            if (rightNew != null)
+            {
+                object value = CreateInstance(rightNew);
+                if (value != null)
+                    return value.GetHashCode();
+            }
+
             return null;
         }
+
 
         private object GetValue(MemberExpression exp)
         {
             var names = new List<string>();
             names.Add(exp.Member.Name);
 
+            var expressionList = new List<Expression>();
+            expressionList.Add(exp.Expression);
             Expression lastExpression = exp.Expression;
             var memberExpression = exp.Expression as MemberExpression;
 
@@ -110,25 +129,80 @@ namespace IndexedList
             {
                 names.Add(memberExpression.Member.Name);
                 lastExpression = memberExpression.Expression;
+                expressionList.Add(memberExpression.Expression);
                 memberExpression = memberExpression.Expression as MemberExpression;
             }
 
             var constantExpression = lastExpression as ConstantExpression;
-            if (constantExpression != null)
-            {
-                object obj = constantExpression.Value;
-                names.Reverse();
-                foreach (string name in names)
-                {
-                    Type type = obj.GetType();
-                    FieldInfo field = type.GetField(name);
-                    obj = field == null ? type.GetProperty(name).GetValue(obj) : field.GetValue(obj);
-                }
+            if (constantExpression != null)            
+                return ReflectValue(constantExpression.Value, names);
 
-                return obj;
+
+            var memberInitExpression = lastExpression as MemberInitExpression;
+            if (memberInitExpression != null && memberInitExpression.Bindings.Count != 0)
+            {
+                var bind = memberInitExpression.Bindings.FirstOrDefault(b => b.Member.Name == names.Last()) as MemberAssignment;
+                if (bind != null)
+                {
+                    names.RemoveAt(names.Count - 1);
+                    memberExpression = bind.Expression as MemberExpression;
+                    while (memberExpression != null)
+                    {
+                        names.Add(memberExpression.Member.Name);
+                        lastExpression = memberExpression.Expression;
+                        memberExpression = memberExpression.Expression as MemberExpression;
+                    }
+
+                    constantExpression = lastExpression as ConstantExpression;
+                    if (constantExpression != null)
+                        return ReflectValue(constantExpression.Value, names);
+                }
+            }
+
+            var newExpression = lastExpression as NewExpression;
+            if (newExpression != null)
+            {
+                var rootObj = CreateInstance(newExpression);
+                return ReflectValue(rootObj, names);
             }
 
             return null;
+        }
+
+        private object CreateInstance(NewExpression newExpression)
+        {
+            var createObject = Expression.Lambda(newExpression).Compile();
+            return createObject.DynamicInvoke();
+        }
+
+        private object ReflectValue(object rootObj, IEnumerable<string> names)
+        {
+            object obj = rootObj;
+            var nameList = names.Reverse().ToList();
+            for (int i = 0; i < nameList.Count; i++)
+            {
+                var name = nameList[i];
+                Type type = obj.GetType();
+                var propertyInfo = type.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (propertyInfo != null)
+                {
+                    if (Nullable.GetUnderlyingType(propertyInfo.PropertyType) != null)
+                        i++;
+
+                    obj = propertyInfo.GetValue(obj);
+                }
+                else
+                {
+                    var fieldInfo = type.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (Nullable.GetUnderlyingType(fieldInfo.FieldType) != null)
+                        i++;
+
+                    obj = fieldInfo.GetValue(obj);
+                }
+                
+            }
+
+            return obj;
         }
     }
 

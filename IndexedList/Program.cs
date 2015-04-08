@@ -25,12 +25,62 @@ namespace IndexedList
         {
             Init();
 
+//            var manyToMany1 = new ManyToMany(1, 1);
+//            var manyToMany2 = new ManyToMany(1, 1);
+//            var manyToMany3 = new ManyToMany(1, 1);
+//            var toManys = new List<ManyToMany>();
+//            toManys.Add(manyToMany1);
+//            toManys.Add(manyToMany2);
+//            toManys.Add(manyToMany3);
+//
+//            toManys.Remove(manyToMany1);
+//            //var manyToMany4 = new ManyToMany(4, 4);
+//            //var manyToMany5 = new ManyToMany(5, 5);
+//            var hashIndexLeaf = new IndexLeaf<ManyToMany>(manyToMany1)
+//                .Add(manyToMany2)
+//                .Add(manyToMany3);
+//                //.Add(manyToMany4)
+//                //.Add(manyToMany5);
+//
+//            foreach (var toMany in hashIndexLeaf.Remove(manyToMany1).Value)
+//            {
+//                Console.WriteLine(toMany.FirstId);
+//            }
+
+            //indexLeaf = indexLeaf.Remove(manyToMany5);
+//            var ints = new List<int>();
+//            ints.Add(1);
+//            ints.Add(1);
+//            ints.Add(1);
+//            ints.Add(1);
+//            ints.Add(1);
+//            ints.Add(1);
+//            ints.Add(1);
+//            ints.Add(1);
+//            ints.Add(1);
+
             for (int i = 1; i <= Count; i *= 10)
                 Test(i);
+
+            //Test(100000);
+
             
+
+            //IList<ManyToMany> toManys = new IndexedList<ManyToMany>() {new ManyToMany(1, 1)};
+            //toManys.Where(i => i.FirstId == 1);
+
+//            var indexedList = new IndexedList<ManyToMany>();
+//            indexedList.AddIndex(mtm => mtm.FirstId);
+//            indexedList.Add(manyToMany1);
+//            indexedList.Add(manyToMany2);
+//            indexedList.Add(manyToMany3);
+//            
+            //Console.WriteLine(indexedList.GetIndexes());
             Console.WriteLine("Done");
             Console.ReadKey();
         }
+
+
 
         static void Test(int count)
         {
@@ -93,7 +143,9 @@ namespace IndexedList
             //indexedList.AddIndex(mtm => mtm.FirstId);
 
             manyToManys = new List<ManyToMany>();
+            var manyToMany = new ManyToMany(1, 1);
             for (int i = 0; i < Count; i++)
+                //manyToManys.Add(manyToMany);
                 manyToManys.Add(new ManyToMany(i, Count - i));
         }
 
@@ -108,41 +160,25 @@ namespace IndexedList
 
             public int FirstId { get; set; }
             public int SecondId { get; set; }
-        }
 
-        class First
-        {
-            public First(int id)
+            public override string ToString()
             {
-                Id = id;
+                return string.Format("FirstId: {0}, SecondId: {1}", FirstId, SecondId);
             }
 
-            public int Id { get; set; }
-            //public List<Second> Seconds = new List<Second>();
-        }
-//
-//        class Second
-//        {
-//            public Second(int id)
-//            {
-//                Id = id;
-//            }
-//
-//            public int Id { get; set; } 
-//            public List<First> Firsts = new List<First>(); 
-//        }
+            public override bool Equals(object obj)
+            {
+                if (obj == null)
+                    return false;
+                var manyToMany = obj as ManyToMany;
+                if (manyToMany == null)
+                    return false;
+                
+                if (manyToMany.FirstId == FirstId)
+                    return true;
 
-//        class Object
-//        {
-//            public int Id { get; set; }
-//            public int ParentId { get; set; }
-//            public string Name { get; set; }
-//            public Object obj { get; set; }
-//
-//            public override string ToString()
-//            {
-//                return string.Format("Id: {0}, Name: {1}", Id, Name);
-//            }
-//        }
+                return base.Equals(obj);
+            }
+        }
     }
 }

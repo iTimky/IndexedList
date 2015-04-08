@@ -53,6 +53,8 @@
   <ItemGroup>
     <Compile Include="IndexTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="IndexLeafTest.cs" />
+    <Compile Include="ExpressionParserTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\IndexedList\IndexedList.csproj">

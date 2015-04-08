@@ -42,8 +42,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ExpressionParser.cs" />
-    <Compile Include="HashIndex.cs" />
+    <Compile Include="Index.cs" />
     <Compile Include="IndexedList.cs" />
+    <Compile Include="IndexLeaf.cs" />
+    <Compile Include="IndexLeafEnumerator.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

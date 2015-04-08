@@ -1,75 +1,30 @@
-﻿using System;
+﻿#region usings
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 
+#endregion
+
+
+[assembly: InternalsVisibleTo("Test")]
 namespace IndexedList
 {
     public class IndexedList<TItem> : IList<TItem>
     {
-        protected readonly Dictionary<string, HashIndex<TItem>> Indexes = new Dictionary<string, HashIndex<TItem>>();
-        protected readonly List<TItem> Items = new List<TItem>();
+        readonly Dictionary<string, Index<TItem>> _indexes = new Dictionary<string, Index<TItem>>();
+        readonly List<TItem> _items = new List<TItem>();
 
-        public IndexedList() { }
+        public IndexedList() {}
+
 
         public IndexedList(IEnumerable<TItem> items)
         {
-            Items.AddRange(items);
+            _items.AddRange(items);
         }
-
-        public IndexedList(params string[] names)
-        {
-            foreach (string name in names)
-                AddIndex(name);
-        }
-
-
-        #region ctros via Expressions
-        public IndexedList(params Expression<Func<TItem, byte>>[] expressions)
-        {
-            foreach (var expression in expressions)
-                AddIndex(expression);
-        }
-
-        public IndexedList(params Expression<Func<TItem, short>>[] expressions)
-        {
-            foreach (var expression in expressions)
-                AddIndex(expression);
-        }
-
-        public IndexedList(params Expression<Func<TItem, int>>[] expressions)
-        {
-            foreach (var expression in expressions)
-                AddIndex(expression);
-        }
-
-        public IndexedList(params Expression<Func<TItem, long>>[] expressions)
-        {
-            foreach (var expression in expressions)
-                AddIndex(expression);
-        }
-
-        public IndexedList(params Expression<Func<TItem, char>>[] expressions)
-        {
-            foreach (var expression in expressions)
-                AddIndex(expression);
-        }
-
-        public IndexedList(params Expression<Func<TItem, string>>[] expressions)
-        {
-            foreach (var expression in expressions)
-                AddIndex(expression);
-        }
-
-        public IndexedList(params Expression<Func<TItem, DateTime>>[] expressions)
-        {
-            foreach (var expression in expressions)
-                AddIndex(expression);
-        }
-
-        #endregion
 
 
         public void AddIndex<TMember>(Expression<Func<TItem, TMember>> expression)
@@ -80,6 +35,7 @@ namespace IndexedList
             string name = ExpressionParser.GetMemberName(expression);
             AddIndex(name);
         }
+
 
         public void AddIndex(string name)
         {
@@ -92,19 +48,19 @@ namespace IndexedList
                     string.Format("Type <{0}> doesn't contain field or property \"{1}\"", type.Name,
                         name));
 
-            if (Indexes.ContainsKey(name))
+            if (_indexes.ContainsKey(name))
                 throw new DuplicateNameException(string.Format(
                     "Duplicate field index creation not allowed. Duplicate member name: \"{0}\"", name));
 
-            Indexes[name] = new HashIndex<TItem>(name, Items);
+            _indexes[name] = new Index<TItem>(name, _items);
         }
 
 
         public void AddRange(IEnumerable<TItem> items)
         {
             List<TItem> itemList = items.ToList();
-            Items.AddRange(itemList);
-            foreach (var index in Indexes.Values)
+            _items.AddRange(itemList);
+            foreach (Index<TItem> index in _indexes.Values)
                 index.AddRange(itemList);
         }
 
@@ -114,16 +70,16 @@ namespace IndexedList
             if (match == null)
                 throw new ArgumentNullException();
 
-            List<TItem> toDelete = Items.Where(i => match(i)).ToList();
-            Items.RemoveAll(match);
-            foreach (var index in Indexes.Values)
+            List<TItem> toDelete = _items.Where(i => match(i)).ToList();
+            _items.RemoveAll(match);
+            foreach (Index<TItem> index in _indexes.Values)
                 index.Remove(toDelete);
         }
 
 
         public void Remove(IEnumerable<TItem> items)
         {
-            foreach (var item in items)
+            foreach (TItem item in items)
                 Remove(item);
         }
 
@@ -136,22 +92,23 @@ namespace IndexedList
             return HasIndex(ExpressionParser.GetMemberName(expression));
         }
 
+
         public bool HasIndex(string memberName)
         {
-            return Indexes.ContainsKey(memberName);
+            return _indexes.ContainsKey(memberName);
         }
 
 
-        public List<IReadOnlyHashIndex<TItem>> GetIndexes()
+        public List<IReadOnlyIndex<TItem>> GetIndexes()
         {
-            return Indexes.Values.Select(i => i.AsReadOnly()).ToList();
+            return _indexes.Values.Select(i => i.AsReadOnly()).ToList();
         }
 
 
         #region Enumerable extension methods override
+        const string NoMatch = "No Match";
+        const string NoElements = "No Elements";
 
-        private const string NoMatch = "No Match";
-        private const string NoElements = "No Elements";
 
         public IEnumerable<TItem> Where(Expression<Func<TItem, bool>> predicate)
         {
@@ -159,14 +116,21 @@ namespace IndexedList
                 throw new ArgumentNullException();
 
             string fieldName = ExpressionParser.GetMemberName(predicate);
-            if (fieldName == null || !Indexes.ContainsKey(fieldName))
-                return Items.Where(predicate.Compile());
+            if (fieldName == null || !_indexes.ContainsKey(fieldName))
+                return _items.Where(predicate.Compile());
 
-            HashIndex<TItem> index = Indexes[fieldName];
-            int? hash = ExpressionParser.GetFieldHash(predicate);
+            Index<TItem> index = _indexes[fieldName];
+            int? hash = ExpressionParser.GetMemberHash(predicate);
             if (hash == null)
+                return _items.Where(predicate.Compile());
+            IReadOnlyCollection<TItem> items = index[hash.Value];
+            if (items.Count == 0)
                 return Enumerable.Empty<TItem>();
-            return index[hash.Value].Where(predicate.Compile());
+
+            if (!index.IsCollisionPossible)
+                return items;
+
+            return items.Where(predicate.Compile());
         }
 
 
@@ -176,14 +140,20 @@ namespace IndexedList
                 throw new ArgumentNullException();
 
             string fieldName = ExpressionParser.GetMemberName(predicate);
-            if (fieldName == null || !Indexes.ContainsKey(fieldName))
-                return Items.Any(predicate.Compile());
+            if (fieldName == null || !_indexes.ContainsKey(fieldName))
+                return _items.Any(predicate.Compile());
 
-            HashIndex<TItem> hashIndex = Indexes[fieldName];
-            int? hash = ExpressionParser.GetFieldHash(predicate);
+            Index<TItem> index = _indexes[fieldName];
+            int? hash = ExpressionParser.GetMemberHash(predicate);
             if (hash == null)
+                return _items.Any(predicate.Compile());
+            var items = index[hash.Value];
+            if (items.Count == 0)
                 return false;
-            return hashIndex[hash.Value].Any(predicate.Compile());
+            if (items.Count == 1 && !index.IsCollisionPossible)
+                return true;
+
+            return index[hash.Value].Any(predicate.Compile());
         }
 
 
@@ -192,18 +162,24 @@ namespace IndexedList
             if (predicate == null)
                 throw new ArgumentNullException();
 
-            if (Items.Count == 0)
+            if (_items.Count == 0)
                 throw new InvalidOperationException(NoElements);
 
             string fieldName = ExpressionParser.GetMemberName(predicate);
-            if (fieldName == null || !Indexes.ContainsKey(fieldName))
-                return Items.First(predicate.Compile());
+            if (fieldName == null || !_indexes.ContainsKey(fieldName))
+                return _items.First(predicate.Compile());
 
-            HashIndex<TItem> hashIndex = Indexes[fieldName];
-            int? hash = ExpressionParser.GetFieldHash(predicate);
+            Index<TItem> index = _indexes[fieldName];
+            int? hash = ExpressionParser.GetMemberHash(predicate);
             if (hash == null)
-                throw new InvalidOperationException(NoMatch);
-            return hashIndex[hash.Value].First(predicate.Compile());
+                return _items.First(predicate.Compile());
+            var items = index[hash.Value];
+            if (items.Count == 0)
+                throw new InvalidOperationException(NoElements);
+            if (items.Count == 1 && !index.IsCollisionPossible)
+                return items.First();
+
+            return items.First(predicate.Compile());
         }
 
 
@@ -213,14 +189,20 @@ namespace IndexedList
                 throw new ArgumentNullException();
 
             string fieldName = ExpressionParser.GetMemberName(predicate);
-            if (fieldName == null || !Indexes.ContainsKey(fieldName))
-                return Items.FirstOrDefault(predicate.Compile());
+            if (fieldName == null || !_indexes.ContainsKey(fieldName))
+                return _items.FirstOrDefault(predicate.Compile());
 
-            HashIndex<TItem> hashIndex = Indexes[fieldName];
-            int? hash = ExpressionParser.GetFieldHash(predicate);
+            Index<TItem> index = _indexes[fieldName];
+            int? hash = ExpressionParser.GetMemberHash(predicate);
             if (hash == null)
+                return _items.FirstOrDefault(predicate.Compile());
+            IReadOnlyCollection<TItem> items = index[hash.Value];
+            if (items.Count == 0)
                 return default(TItem);
-            return hashIndex[hash.Value].FirstOrDefault(predicate.Compile());
+            if (items.Count == 1 && !index.IsCollisionPossible)
+                return items.First();
+
+            return items.FirstOrDefault(predicate.Compile());
         }
 
 
@@ -229,131 +211,146 @@ namespace IndexedList
             if (predicate == null)
                 throw new ArgumentNullException();
 
-            if (Items.Count == 0)
+            if (_items.Count == 0)
                 throw new InvalidOperationException(NoElements);
 
             string fieldName = ExpressionParser.GetMemberName(predicate);
-            if (fieldName == null || !Indexes.ContainsKey(fieldName))
-                return Items.Single(predicate.Compile());
+            if (fieldName == null || !_indexes.ContainsKey(fieldName))
+                return _items.Single(predicate.Compile());
 
-            HashIndex<TItem> hashIndex = Indexes[fieldName];
-            int? hash = ExpressionParser.GetFieldHash(predicate);
+            Index<TItem> index = _indexes[fieldName];
+            int? hash = ExpressionParser.GetMemberHash(predicate);
             if (hash == null)
-                throw new InvalidOperationException(NoMatch);
-            return hashIndex[hash.Value].Single(predicate.Compile());
+                return _items.Single(predicate.Compile());
+            IReadOnlyCollection<TItem> items = index[hash.Value];
+            if (items.Count == 0)
+                throw new InvalidOperationException(NoElements);
+            if (items.Count == 1 && !index.IsCollisionPossible)
+                return items.Single();
+
+            return items.Single(predicate.Compile());
         }
+
 
         public TItem SingleOrDefault(Expression<Func<TItem, bool>> predicate)
         {
             if (predicate == null)
                 throw new ArgumentNullException();
 
-            if (Items.Count == 0)
+            if (_items.Count == 0)
                 return default(TItem);
 
             string fieldName = ExpressionParser.GetMemberName(predicate);
-            if (fieldName == null || !Indexes.ContainsKey(fieldName))
-                return Items.Single(predicate.Compile());
+            if (fieldName == null || !_indexes.ContainsKey(fieldName))
+                return _items.Single(predicate.Compile());
 
-            HashIndex<TItem> hashIndex = Indexes[fieldName];
-            int? hash = ExpressionParser.GetFieldHash(predicate);
+            Index<TItem> index = _indexes[fieldName];
+            int? hash = ExpressionParser.GetMemberHash(predicate);
             if (hash == null)
-                throw new InvalidOperationException(NoMatch);
-            return hashIndex[hash.Value].SingleOrDefault(predicate.Compile());
-        }
+                return _items.Single(predicate.Compile());
+            IReadOnlyCollection<TItem> items = index[hash.Value];
+            if (items.Count == 0)
+                return default(TItem);
+            if (items.Count == 1 && !index.IsCollisionPossible)
+                return items.Single();
 
+            return items.SingleOrDefault(predicate.Compile());
+        }
         #endregion
 
 
         #region IList<TItem>
-
         public IEnumerator<TItem> GetEnumerator()
         {
-            return Items.GetEnumerator();
+            return _items.GetEnumerator();
         }
+
 
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
         }
 
+
         public void Add(TItem item)
         {
-            Items.Add(item);
-            foreach (var index in Indexes.Values)
+            _items.Add(item);
+            foreach (Index<TItem> index in _indexes.Values)
                 index.Add(item);
         }
 
+
         public void Clear()
         {
-            Items.Clear();
-            foreach (var index in Indexes.Values)
+            _items.Clear();
+            foreach (Index<TItem> index in _indexes.Values)
                 index.Clear();
         }
 
+
         public bool Contains(TItem item)
         {
-            return Items.Contains(item);
+            return _items.Contains(item);
         }
+
 
         public void CopyTo(TItem[] array, int arrayIndex)
         {
-            Items.CopyTo(array, arrayIndex);
+            _items.CopyTo(array, arrayIndex);
         }
+
 
         public bool Remove(TItem item)
         {
-            foreach (var index in Indexes)
+            foreach (KeyValuePair<string, Index<TItem>> index in _indexes)
                 index.Value.Remove(item);
 
-            return Items.Remove(item);
+            return _items.Remove(item);
         }
 
-        public int Count
-        {
-            get { return Items.Count; }
-        }
 
-        public bool IsReadOnly
-        {
-            get { return false; }
-        }
+        public int Count { get { return _items.Count; } }
+
+        public bool IsReadOnly { get { return false; } }
+
 
         public int IndexOf(TItem item)
         {
-            return Items.IndexOf(item);
+            return _items.IndexOf(item);
         }
+
 
         public void Insert(int index, TItem item)
         {
-            Items.Insert(index, item);
-            foreach (var hashIndex in Indexes.Values)
+            _items.Insert(index, item);
+            foreach (Index<TItem> hashIndex in _indexes.Values)
                 hashIndex.Add(item);
         }
 
+
         public void RemoveAt(int index)
         {
-            TItem item = Items[index];
-            Items.RemoveAt(index);
-            foreach (var hashIndex in Indexes.Values)
+            TItem item = _items[index];
+            _items.RemoveAt(index);
+            foreach (Index<TItem> hashIndex in _indexes.Values)
                 hashIndex.Remove(item);
         }
 
+
         public TItem this[int index]
         {
-            get { return Items[index]; }
+            get { return _items[index]; }
             set
             {
-                TItem oldItem = Items[index];
-                Items[index] = value;
-                foreach (var hashIndex in Indexes.Values)
+                TItem oldItem = _items[index];
+                _items[index] = value;
+                foreach (Index<TItem> hashIndex in _indexes.Values)
                 {
                     hashIndex.Remove(oldItem);
                     hashIndex.Add(value);
                 }
             }
         }
-
         #endregion
     }
 }
